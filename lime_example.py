@@ -1,7 +1,6 @@
 # %%
-from impo
-from os import pathrtlib.resources import path
 import os
+from os import path
 import numpy as np
 import matplotlib.pyplot as plt
 from tensorflow.keras.applications import resnet50
@@ -9,7 +8,7 @@ from tensorflow.keras.preprocessing import image
 from lime import lime_image
 from skimage.segmentation import mark_boundaries
 import kagglehub
-from tensorflow.keras.models import Model
+from tensorflow.keras.models import Model, load_model
 from tensorflow.keras.layers import Dense, GlobalAveragePooling2D
 from tensorflow.keras.optimizers import Adam
 from tensorflow.keras.preprocessing.image import ImageDataGenerator
@@ -21,6 +20,10 @@ from tensorflow.keras.preprocessing.image import ImageDataGenerator
 
 train_dir = os.path.join(path, 'seefood', 'train')
 test_dir  = os.path.join(path, 'seefood', 'test')
+
+model_dir = os.path.join(os.getcwd(), 'saved_models')
+os.makedirs(model_dir, exist_ok=True)
+model_path = os.path.join(model_dir, 'hotdog_resnet50.keras')
 
 # %%
 # 2. Build data generators from train/test directory structure
@@ -44,24 +47,28 @@ test_generator = test_datagen.flow_from_directory(
 print("Classes:", train_generator.class_indices)
 
 # %%
-# 3. Build fine-tuned ResNet50 binary classifier
-base_model = resnet50.ResNet50(weights='imagenet', include_top=False)
+# 3. Load existing model if available; otherwise train and save
+if os.path.exists(model_path):
+    model = load_model(model_path)
+    print(f"Loaded saved model from: {model_path}")
+else:
+    base_model = resnet50.ResNet50(weights='imagenet', include_top=False)
 
-# Freeze all base layers
-for layer in base_model.layers:
-    layer.trainable = False
+    # Freeze all base layers
+    for layer in base_model.layers:
+        layer.trainable = False
 
-x = GlobalAveragePooling2D()(base_model.output)
-output = Dense(1, activation='sigmoid')(x)
-model = Model(inputs=base_model.input, outputs=output)
+    x = GlobalAveragePooling2D()(base_model.output)
+    output = Dense(1, activation='sigmoid')(x)
+    model = Model(inputs=base_model.input, outputs=output)
 
-model.compile(optimizer=Adam(learning_rate=1e-3),
-              loss='binary_crossentropy',
-              metrics=['accuracy'])
+    model.compile(optimizer=Adam(learning_rate=1e-3),
+                  loss='binary_crossentropy',
+                  metrics=['accuracy'])
 
-# %%
-# 4. Train on training data, validate on test data
-model.fit(train_generator, epochs=5, validation_data=test_generator)
+    model.fit(train_generator, epochs=5, validation_data=test_generator)
+    model.save(model_path)
+    print(f"Saved trained model to: {model_path}")
 
 # %%
 # 5. Load one test image for LIME explanation
